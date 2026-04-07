@@ -1,0 +1,42 @@
+name: crispr-editing-env
+description: >
+  Production-quality OpenEnv simulation for CRISPR guide RNA selection and editing strategy optimization.
+  The agent aims to correct mutations while maximizing efficiency and minimizing off-target risk.
+action_space:
+  - select_guide:<id>
+  - modify_guide:increase_specificity
+  - simulate_edit
+  - apply_edit
+  - terminate
+observation_space:
+  sequence_window: string
+  mutation_position: int
+  candidate_guides:
+    - id: string
+      efficiency: float
+      off_target_risk: float
+      utility: float
+  current_selected_guide: string|null
+  efficiency: float
+  off_target_risk: float
+  steps_taken: int
+  corrected_mutations: int
+  total_mutations: int
+reward_type:
+  type: continuous
+  range: [0.0, 1.0]
+  components:
+    - correctness_of_edit
+    - efficiency
+    - off_target_risk
+    - step_penalty
+tasks:
+  easy:
+    description: Single mutation with an obvious best guide.
+    grader_output: score_0_to_1
+  medium:
+    description: Single mutation with multiple guide tradeoffs.
+    grader_output: score_0_to_1
+  hard:
+    description: Multiple mutations with noisy observations and harder guide tradeoffs.
+    grader_output: score_0_to_1
