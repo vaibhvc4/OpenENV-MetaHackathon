@@ -1,4 +1,5 @@
 name: crispr-editing-env
+url: https://joywin2003-crispr-editing-env.hf.space
 description: >
   Production-quality OpenEnv simulation for CRISPR guide RNA selection and editing strategy optimization.
   The agent aims to correct mutations while maximizing efficiency and minimizing off-target risk.

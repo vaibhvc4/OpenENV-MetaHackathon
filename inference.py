@@ -159,6 +159,8 @@ def run_task(task_name: str, seed: int = 42) -> float:
             rewards = [0.0]
         final_score = 0.0
 
+    env.close()
+
     success = final_score > 0.5
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
     print(

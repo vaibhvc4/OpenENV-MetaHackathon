@@ -138,6 +138,12 @@ class CrisprEnv:
 
         return self.state(), reward, self._done, info
 
+    def close(self) -> None:
+        """Clean up the environment at the end of an episode."""
+        self._scenario = None
+        self._selected_guide = None
+        self._done = True
+
     def _parse_action(self, action: str) -> Action:
         text = action.strip()
 
