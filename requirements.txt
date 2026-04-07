@@ -1,3 +1,6 @@
 numpy>=1.26.0,<3.0.0
 pydantic>=2.7.0,<3.0.0
 matplotlib
+fastapi>=0.110.0
+uvicorn>=0.29.0
+openai>=1.12.0
