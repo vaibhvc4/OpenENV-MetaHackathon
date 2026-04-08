@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 import os
-from typing import Dict
+from typing import Dict, Optional
 
 # Add parent dir so env/ package is importable when run from server/
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -43,7 +43,9 @@ def root():
 
 
 @app.post("/reset")
-def reset(req: ResetRequest):
+def reset(req: Optional[ResetRequest] = None):
+    if req is None:
+        req = ResetRequest()
     env = CrisprEnv(task_level=req.task_level, seed=req.seed)
     _envs[req.session_id] = env
     obs = env.reset()
