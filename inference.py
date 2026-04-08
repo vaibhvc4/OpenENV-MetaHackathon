@@ -5,7 +5,6 @@ Uses the OpenAI client to run an LLM agent against all three CRISPR tasks
 and emits structured [START]/[STEP]/[END] stdout logs.
 """
 
-import json
 import os
 import sys
 import traceback
@@ -17,9 +16,12 @@ from env.environment import CrisprEnv
 # ---------------------------------------------------------------------------
 # Configuration from environment variables
 # ---------------------------------------------------------------------------
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
-API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
-MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
+API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+API_KEY = os.getenv("HF_TOKEN")
+if not API_KEY:
+    raise RuntimeError("HF_TOKEN environment variable is required. Set it with: export HF_TOKEN='your-token'")
+
 BENCHMARK = "crispr-editing-env"
 MAX_STEPS = 10
 TASKS = ["easy", "medium", "hard"]
@@ -115,6 +117,7 @@ def run_task(task_name: str, seed: int = 42) -> float:
     step_num = 0
     last_error = None
     final_score = 0.0
+    info = {}
 
     try:
         while not done and step_num < MAX_STEPS:
@@ -125,7 +128,6 @@ def run_task(task_name: str, seed: int = 42) -> float:
                 obs, reward, done, info = env.step(action)
                 last_error = None
             except (ValueError, RuntimeError) as e:
-                # Invalid action — record error, give zero reward, continue
                 last_error = str(e)
                 reward = 0.0
                 done = False
@@ -133,10 +135,7 @@ def run_task(task_name: str, seed: int = 42) -> float:
 
             rewards.append(reward)
             error_str = last_error if last_error else "null"
-            print(
-                f"[STEP] step={step_num} action={action} "
-                f"reward={reward:.2f} done={str(done).lower()} error={error_str}"
-            )
+            print(f"[STEP] step={step_num} action={action} reward={reward:.2f} done={str(done).lower()} error={error_str}")
 
             if not done:
                 messages.append({"role": "assistant", "content": action})
@@ -145,11 +144,9 @@ def run_task(task_name: str, seed: int = 42) -> float:
                     feedback = f"ERROR: {last_error}\n\n{feedback}"
                 messages.append({"role": "user", "content": feedback})
 
-        # Get final score from the last info dict if episode ended properly
         if done and "final_score" in info:
             final_score = info["final_score"]
         else:
-            # Episode didn't finish via grader — compute a proxy score from rewards
             final_score = sum(rewards) / max(len(rewards), 1)
             final_score = max(0.0, min(1.0, final_score))
 
@@ -159,30 +156,18 @@ def run_task(task_name: str, seed: int = 42) -> float:
             rewards = [0.0]
         final_score = 0.0
 
-    env.close()
-
-    success = final_score > 0.5
-    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
-    print(
-        f"[END] success={str(success).lower()} steps={step_num} "
-        f"score={final_score:.2f} rewards={rewards_str}"
-    )
+    finally:
+        env.close()
+        success = final_score > 0.5
+        rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+        print(f"[END] success={str(success).lower()} steps={step_num} score={final_score:.2f} rewards={rewards_str}")
 
     return final_score
 
 
 def main():
-    scores = {}
     for task_name in TASKS:
-        score = run_task(task_name, seed=42)
-        scores[task_name] = score
-        print()  # blank line between tasks
-
-    print("--- Summary ---")
-    for task_name, score in scores.items():
-        print(f"  {task_name}: {score:.2f}")
-    overall = sum(scores.values()) / len(scores)
-    print(f"  overall: {overall:.2f}")
+        run_task(task_name, seed=42)
 
 
 if __name__ == "__main__":
