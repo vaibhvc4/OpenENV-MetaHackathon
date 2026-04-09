@@ -63,6 +63,9 @@ Each task has a deterministic grader returning a score in [0.0, 1.0]:
 - **Medium grader**: 70% accuracy + 30% reward
 - **Hard grader**: 60% accuracy + 40% reward
 
+## Exploration visualization
+<img width="1280" height="692" alt="Figure_1" src="https://github.com/user-attachments/assets/78ba2919-63c9-41b5-9b23-ce3d4062cd7d" />
+
 ## Baseline Scores (Rule-Based Agent)
 
 ```
