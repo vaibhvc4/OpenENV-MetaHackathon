@@ -1,4 +1,4 @@
-"""Root app entry point — re-exports from server/app.py to avoid duplication."""
+"""Root app entry point — re-exports from server/app.py."""
 
 from server.app import app, main  # noqa: F401
 

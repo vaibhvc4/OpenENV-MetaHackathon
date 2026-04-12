@@ -1,8 +1,8 @@
 """
-Inference script for crispr-editing-env.
+Inference script for crispr-editing-env v2.
 
-Uses the OpenAI client to run an LLM agent against all three CRISPR tasks
-and emits structured [START]/[STEP]/[END] stdout logs.
+Uses the OpenAI client to run an LLM agent with bioinformatics tools
+against all three CRISPR tasks. Emits [START]/[STEP]/[END] stdout logs.
 """
 
 import os
@@ -11,20 +11,20 @@ import traceback
 
 from openai import OpenAI
 
-from env.environment import CrisprEnv
+from server.environment import CrisprEnv
 
 # ---------------------------------------------------------------------------
-# Configuration from environment variables
+# Configuration
 # ---------------------------------------------------------------------------
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 API_KEY = os.getenv("HF_TOKEN")
 if not API_KEY:
-    raise RuntimeError("HF_TOKEN environment variable is required. Set it with: export HF_TOKEN='your-token'")
+    raise RuntimeError("HF_TOKEN environment variable is required.")
 
 BENCHMARK = "crispr-editing-env"
-MAX_STEPS = 10
-TASKS = ["easy", "medium", "hard"]
+MAX_STEPS = 35
+TASKS = ["single_target", "multi_repair", "precision_editing"]
 
 _client = None
 
@@ -35,73 +35,96 @@ def _get_client() -> OpenAI:
         _client = OpenAI(api_key=API_KEY, base_url=API_BASE_URL)
     return _client
 
-# ---------------------------------------------------------------------------
-# System prompt describing the environment to the LLM
-# ---------------------------------------------------------------------------
+
 SYSTEM_PROMPT = """\
-You are an AI agent controlling a CRISPR gene-editing simulation.
+You are a computational biologist using CRISPR-Cas9 to correct pathogenic DNA mutations.
 
-Your goal: correct DNA mutations by selecting the best guide RNA, optionally \
-improving its specificity, simulating the edit, and applying it.
+You interact with a bioinformatics environment by issuing tool commands. Each turn, respond with EXACTLY ONE tool command (nothing else).
 
-Available actions (respond with EXACTLY one per turn):
-  select_guide:<id>                 - Select a candidate guide RNA by its id
-  modify_guide:increase_specificity - Improve specificity of the selected guide (lowers off-target risk)
-  simulate_edit                     - Simulate the edit to preview success probability
-  apply_edit                        - Apply the edit to correct mutations
-  terminate                         - End the episode
+AVAILABLE TOOLS:
+  analyze_sequence <start> <end>          — View GC content, repeats, structure for a gene region (FREE)
+  search_pam_sites <pattern>              — Find PAM motifs like NGG or NNGRRT in the gene (FREE)
+  design_guide <pam_position> <strand>    — Design a 20nt guide RNA at a PAM site (FREE)
+  evaluate_guide <guide_sequence>         — Detailed quality scoring (costs 1 credit)
+  off_target_scan <guide_sequence>        — Check for off-target binding sites (costs 2 credits)
+  apply_edit <guide_sequence> <position>  — Apply the CRISPR edit, irreversible (costs 3 credits)
+  check_edit_result                       — See which mutations are corrected and any damage (FREE)
+  submit_solution                         — End the episode and get your final score (FREE)
 
-Strategy tips:
-- Pick the guide with the best trade-off of high efficiency and low off-target risk.
-- Use modify_guide:increase_specificity if off-target risk is high.
-- simulate_edit lets you check success probability before committing.
-- apply_edit attempts to correct mutations. After applying, you can terminate.
-- Respond with ONLY the action string, nothing else.
+STRATEGY:
+1. Start by searching for PAM sites near the mutation(s): search_pam_sites NGG
+2. Design guides at promising PAM sites (close to mutations, good strand)
+3. Evaluate guide quality before committing credits
+4. For hard tasks: ALWAYS run off_target_scan before apply_edit to check for regulatory region hits
+5. Apply edit only when confident the guide is safe and effective
+6. Submit when done or budget is low
+
+IMPORTANT:
+- Budget is LIMITED. Don't waste credits on evaluate/scan for every guide.
+- apply_edit is IRREVERSIBLE and costs 3 credits. Plan carefully.
+- If the task mentions a regulatory region, off-target damage there is catastrophic.
+- Respond with ONLY the tool command. No explanation, no markdown, just the command.
 """
 
 
 def format_observation(obs) -> str:
-    """Format an EnvironmentState into a concise text prompt for the LLM."""
-    guides_text = "\n".join(
-        f"  - {g.id}: efficiency={g.efficiency:.3f}, off_target_risk={g.off_target_risk:.3f}, utility={g.utility:.3f}"
-        for g in obs.candidate_guides
-    )
-    return (
-        f"Sequence window: {obs.sequence_window}\n"
-        f"Mutation position: {obs.mutation_position}\n"
-        f"Candidate guides:\n{guides_text}\n"
-        f"Selected guide: {obs.current_selected_guide or 'None'}\n"
-        f"Current efficiency: {obs.efficiency:.3f}\n"
-        f"Off-target risk: {obs.off_target_risk:.3f}\n"
-        f"Steps taken: {obs.steps_taken}/{MAX_STEPS}\n"
-        f"Corrected mutations: {obs.corrected_mutations}/{obs.total_mutations}"
-    )
+    """Format EnvironmentState as text for the LLM."""
+    lines = [
+        f"=== {obs.task_type} | Step {obs.steps_taken}/{obs.max_steps} | Budget: {obs.experiment_budget} credits ===",
+        f"Gene: {obs.target_gene_id} ({obs.target_gene_length}bp)",
+        f"Mutations to fix:",
+    ]
+    for m in obs.known_mutations:
+        corrected = any(
+            c.corrected and c.mutation_position == m.position
+            for c in obs.corrections_made
+        )
+        status = " [CORRECTED]" if corrected else ""
+        lines.append(f"  pos={m.position} {m.ref_base}->{m.alt_base}{status}")
+
+    if obs.regulatory_regions:
+        for rs, re in obs.regulatory_regions:
+            lines.append(f"REGULATORY NO-EDIT ZONE: {rs}-{re} (DO NOT damage!)")
+
+    lines.append(f"Edits applied: {obs.edits_applied}")
+    if obs.off_target_damage:
+        lines.append(f"Off-target damage: {len(obs.off_target_damage)} site(s)")
+
+    if obs.last_tool_output:
+        lines.append(f"\n--- Last tool output ({obs.last_tool}) ---")
+        lines.append(obs.last_tool_output)
+    elif obs.last_tool_error:
+        lines.append(f"\n--- ERROR ({obs.last_tool}) ---")
+        lines.append(obs.last_tool_error)
+
+    return "\n".join(lines)
 
 
 def get_llm_action(messages: list) -> str:
-    """Call the LLM and extract a single action string."""
+    """Call the LLM and extract a tool command."""
     response = _get_client().chat.completions.create(
         model=MODEL_NAME,
         messages=messages,
-        max_tokens=64,
+        max_tokens=128,
         temperature=0.0,
     )
     raw = response.choices[0].message.content.strip()
-    # Extract just the action line in case the model adds commentary
+    # Extract the first valid-looking tool command
+    valid_tools = [
+        "analyze_sequence", "search_pam_sites", "design_guide",
+        "evaluate_guide", "off_target_scan", "apply_edit",
+        "check_edit_result", "submit_solution",
+    ]
     for line in raw.splitlines():
         line = line.strip()
-        if line.startswith("select_guide:"):
+        if any(line.startswith(t) for t in valid_tools):
             return line
-        if line.startswith("modify_guide:"):
-            return line
-        if line in ("simulate_edit", "apply_edit", "terminate"):
-            return line
-    # Fallback: return raw (will surface as an error in the step)
-    return raw.splitlines()[0].strip() if raw else "terminate"
+    # Fallback
+    return raw.splitlines()[0].strip() if raw else "submit_solution"
 
 
 def run_task(task_name: str, seed: int = 42) -> float:
-    """Run one episode of a task with the LLM agent, return final score."""
+    """Run one episode. Returns final score."""
     env = CrisprEnv(task_level=task_name, seed=seed)
     obs = env.reset()
 

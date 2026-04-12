@@ -9,75 +9,70 @@ tags:
   - openenv
 ---
 
-# crispr-editing-env
+# crispr-editing-env v2
 
-A production-quality OpenEnv environment that simulates **CRISPR gene editing optimization**. An AI agent must select and tune guide RNAs to correct DNA mutations while maximizing editing efficiency and minimizing off-target risk.
+A tool-based OpenEnv environment for **CRISPR gene editing**. An AI agent uses bioinformatics tools to analyze DNA sequences, find PAM sites, design guide RNAs, evaluate off-target risks, and apply precision edits under resource constraints.
 
 ## Why CRISPR?
 
-CRISPR guide RNA selection is a real-world bioinformatics task where researchers must balance multiple competing objectives (efficiency vs. safety) under uncertainty. This environment models that decision-making process as a sequential optimization problem suitable for RL and LLM agents.
+CRISPR guide RNA design is a real-world bioinformatics task requiring multi-step investigation: researchers must find PAM sites, design guides, evaluate safety, and manage limited experimental resources. This environment models that workflow as a sequential tool-use problem for LLM agents.
 
-## Action Space
+## Action Space (8 Bioinformatics Tools)
 
-| Action | Description |
-|--------|-------------|
-| `select_guide:<id>` | Select a candidate guide RNA by its ID |
-| `modify_guide:increase_specificity` | Improve specificity of the selected guide (reduces off-target risk at slight efficiency cost) |
-| `simulate_edit` | Preview the success probability before committing |
-| `apply_edit` | Apply the edit to correct mutations |
-| `terminate` | End the episode |
+| Tool | Description | Cost |
+|------|-------------|------|
+| `analyze_sequence <start> <end>` | View GC content, repeats, structure for a gene region | FREE |
+| `search_pam_sites <pattern>` | Find PAM motifs (NGG, NNGRRT) in the gene | FREE |
+| `design_guide <pam_pos> <strand>` | Design a 20nt guide RNA at a PAM site | FREE |
+| `evaluate_guide <sequence>` | Detailed quality scoring | 1 credit |
+| `off_target_scan <sequence>` | Check for off-target binding sites | 2 credits |
+| `apply_edit <sequence> <position>` | Apply the edit (irreversible) | 3 credits |
+| `check_edit_result` | See corrections and damage so far | FREE |
+| `submit_solution` | End episode, trigger grading | FREE |
+
+The agent sends free-form tool commands as actions. Budget limits prevent brute-force approaches.
 
 ## Observation Space
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `sequence_window` | string | DNA sequence window around the mutation site |
-| `mutation_position` | int | Position of the mutation in the full sequence |
-| `candidate_guides` | list | Available guide RNAs with `id`, `efficiency`, `off_target_risk`, `utility` |
-| `current_selected_guide` | string/null | Currently selected guide ID |
-| `efficiency` | float [0,1] | Efficiency of the selected guide |
-| `off_target_risk` | float [0,1] | Off-target risk of the selected guide |
-| `steps_taken` | int | Steps taken in the current episode |
-| `corrected_mutations` | int | Mutations successfully corrected |
-| `total_mutations` | int | Total mutations to correct |
+| `task_description` | string | What the agent must accomplish |
+| `task_type` | string | single_target / multi_repair / precision_editing |
+| `target_gene_id` | string | Gene identifier |
+| `target_gene_length` | int | Gene length in base pairs |
+| `known_mutations` | list | Mutations to correct (position, ref_base, alt_base) |
+| `regulatory_regions` | list | No-edit zones (hard task only) |
+| `experiment_budget` | int | Remaining experiment credits |
+| `last_tool_output` | string | Raw output from the last tool call |
+| `tool_history` | list | Previous tool calls and results |
+| `corrections_made` | list | Which mutations have been corrected |
+| `off_target_damage` | list | Any collateral damage from edits |
 
-## Reward Function
+No pre-computed guide candidates or utility scores. The agent must discover everything through tool use.
 
-Continuous reward in [0, 1] combining:
-- **Correctness** (55%): fraction of mutations corrected
-- **Efficiency** (30%): guide RNA efficiency score
-- **Safety** (15%): penalty for off-target risk
-- **Step penalty**: 2% per step (max 25%) to encourage efficiency
-- **Action bonuses**: +2% for simulate, +5% for apply, -5% for early terminate
+## Tasks (3 Qualitatively Different)
 
-## Tasks
+| Task | Difficulty | Description | Budget | Max Steps |
+|------|-----------|-------------|--------|-----------|
+| `single_target` | Easy | Correct one mutation. Find PAM sites, design guide, evaluate, apply. | 20 | 25 |
+| `multi_repair` | Medium | Correct 3 mutations with limited budget. Must plan which to group. | 15 | 30 |
+| `precision_editing` | Hard | Correct 2 mutations near a regulatory no-edit zone. Obvious guide is a trap. | 12 | 35 |
 
-| Task | Difficulty | Description | Max Steps |
-|------|-----------|-------------|-----------|
-| `easy` | Low | Single mutation, one clearly best guide among 4 candidates | 6 |
-| `medium` | Medium | Single mutation, 6 guides with competing tradeoffs | 8 |
-| `hard` | High | 3 mutations, noisy observations, 5 guides per mutation | 10 |
+### Grading
 
-Each task has a deterministic grader returning a score in [0.0, 1.0]:
-- **Easy grader**: 80% accuracy + 20% reward
-- **Medium grader**: 70% accuracy + 30% reward
-- **Hard grader**: 60% accuracy + 40% reward
+- **Easy**: 70% correction + 20% safety + 10% efficiency
+- **Medium**: 50% correction + 25% safety + 15% efficiency + 10% grouping bonus
+- **Hard**: 35% correction + 25% safety + 30% regulatory integrity (binary!) + 10% efficiency
 
-## Exploration visualization
-<img width="1280" height="692" alt="Figure_1" src="https://github.com/user-attachments/assets/78ba2919-63c9-41b5-9b23-ce3d4062cd7d" />
-
-## Baseline Scores (Rule-Based Agent)
+## Baseline Scores (Greedy Agent, 10 seeds)
 
 ```
-seed=123, 5 episodes per task
-----------------------------------------------------------
-Task=  easy | avg_reward=2.1766 | avg_score=0.9088
-Task=medium | avg_reward=1.9574 | avg_score=0.5561
-Task=  hard | avg_reward=1.3852 | avg_score=0.1908
-----------------------------------------------------------
-Overall avg reward: 1.8397
-Overall avg score : 0.5519
+single_target       : avg=0.77
+multi_repair        : avg=0.63
+precision_editing   : avg=0.49
 ```
+
+The greedy baseline searches for the nearest PAM site and applies without evaluating off-targets. On the hard task, this frequently damages the regulatory region.
 
 ## Setup & Usage
 
@@ -85,7 +80,6 @@ Overall avg score : 0.5519
 
 ```bash
 pip install -r requirements.txt
-python run_baseline.py          # Rule-based baseline
 python inference.py             # LLM inference (needs HF_TOKEN)
 ```
 
@@ -96,7 +90,7 @@ docker build -t crispr-editing-env .
 docker run --rm -p 7860:7860 crispr-editing-env
 ```
 
-### API Endpoints (when running as server)
+### API Endpoints
 
 ```bash
 # Health check
@@ -105,12 +99,12 @@ curl http://localhost:7860/
 # Reset environment
 curl -X POST http://localhost:7860/reset \
   -H "Content-Type: application/json" \
-  -d '{"task_level": "easy", "seed": 42}'
+  -d '{"task_level": "single_target", "seed": 42}'
 
 # Take a step
 curl -X POST http://localhost:7860/step \
   -H "Content-Type: application/json" \
-  -d '{"action": "select_guide:g0"}'
+  -d '{"action": "search_pam_sites NGG"}'
 
 # Get current state
 curl http://localhost:7860/state
@@ -119,7 +113,7 @@ curl http://localhost:7860/state
 curl http://localhost:7860/tasks
 ```
 
-### Environment Variables for Inference
+### Environment Variables
 
 ```bash
 export API_BASE_URL="https://router.huggingface.co/v1"
@@ -132,18 +126,18 @@ python inference.py
 
 ```
 crispr-editing-env/
-├── env/
-│   ├── environment.py      # CrisprEnv: step(), reset(), state()
-│   ├── models.py           # Pydantic models (Observation, Action, Reward)
-│   ├── simulation.py       # DNA/mutation/guide RNA simulation
-│   ├── reward.py           # Reward computation
-│   └── tasks.py            # Task definitions + graders
-├── agents/
-│   └── baseline.py         # Rule-based baseline agent
-├── app.py                  # FastAPI server for HF Spaces
-├── inference.py            # LLM inference with OpenAI client
-├── run_baseline.py         # Local baseline runner
-├── openenv.yaml            # OpenEnv metadata
+├── server/
+│   ├── app.py              # FastAPI server (reset/step/state/tasks)
+│   ├── environment.py      # CrisprEnv: tool dispatch engine
+│   ├── models.py           # Pydantic models
+│   ├── simulation.py       # PAM search, guide design, off-target scan
+│   ├── tasks.py            # 3 task generators
+│   ├── graders.py          # Final scoring logic
+│   └── reward.py           # Step-level rewards + tool costs
+├── app.py                  # Root re-export for Dockerfile
+├── inference.py            # LLM agent with [START]/[STEP]/[END] format
+├── openenv.yaml            # OpenEnv spec metadata
 ├── Dockerfile
+├── pyproject.toml
 └── requirements.txt
 ```

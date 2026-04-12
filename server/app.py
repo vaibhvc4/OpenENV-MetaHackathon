@@ -1,4 +1,4 @@
-"""Server entry point for openenv-core validation and HF Spaces."""
+"""FastAPI server for CRISPR v2 environment."""
 
 from __future__ import annotations
 
@@ -6,16 +6,16 @@ import sys
 import os
 from typing import Dict, Optional
 
-# Add parent dir so env/ package is importable when run from server/
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from env.environment import CrisprEnv
+from server.environment import CrisprEnv
+from server.tasks import TASK_REGISTRY
 
-app = FastAPI(title="crispr-editing-env", version="1.0.0")
+app = FastAPI(title="crispr-editing-env", version="2.0.0")
 
 _envs: Dict[str, CrisprEnv] = {}
 
@@ -27,7 +27,7 @@ def _get_env(session_id: str = "default") -> CrisprEnv:
 
 
 class ResetRequest(BaseModel):
-    task_level: str = "easy"
+    task_level: str = "single_target"
     seed: int = 42
     session_id: str = "default"
 
@@ -39,7 +39,7 @@ class StepRequest(BaseModel):
 
 @app.get("/")
 def root():
-    return {"status": "ok", "environment": "crispr-editing-env"}
+    return {"status": "ok", "environment": "crispr-editing-env", "version": "2.0"}
 
 
 @app.post("/reset")
@@ -81,9 +81,12 @@ def state(session_id: str = "default"):
 def list_tasks():
     return {
         "tasks": [
-            {"name": "easy", "description": "Single mutation with an obvious best guide."},
-            {"name": "medium", "description": "Single mutation with multiple guide tradeoffs."},
-            {"name": "hard", "description": "Multiple mutations with noisy observations and harder guide tradeoffs."},
+            {
+                "name": name,
+                "display_name": info["display_name"],
+                "difficulty": info["difficulty"],
+            }
+            for name, info in TASK_REGISTRY.items()
         ]
     }
 

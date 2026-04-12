@@ -1,43 +1,53 @@
+spec_version: 1
 name: crispr-editing-env
 url: https://joywin2003-crispr-editing-env.hf.space
+runtime: fastapi
+app: server.app:app
+port: 7860
 description: >
-  Production-quality OpenEnv simulation for CRISPR guide RNA selection and editing strategy optimization.
-  The agent aims to correct mutations while maximizing efficiency and minimizing off-target risk.
+  CRISPR gene editing environment where an AI agent uses bioinformatics tools
+  to analyze DNA sequences, find PAM sites, design guide RNAs, evaluate off-target
+  risks, and apply precision edits under resource constraints.
 action_space:
-  - select_guide:<id>
-  - modify_guide:increase_specificity
-  - simulate_edit
-  - apply_edit
-  - terminate
+  type: tool_commands
+  tools:
+    - analyze_sequence
+    - search_pam_sites
+    - design_guide
+    - evaluate_guide
+    - off_target_scan
+    - apply_edit
+    - check_edit_result
+    - submit_solution
 observation_space:
-  sequence_window: string
-  mutation_position: int
-  candidate_guides:
-    - id: string
-      efficiency: float
-      off_target_risk: float
-      utility: float
-  current_selected_guide: string|null
-  efficiency: float
-  off_target_risk: float
+  task_description: string
+  task_type: string
+  target_gene_id: string
+  target_gene_length: int
+  known_mutations: list
+  regulatory_regions: list
+  experiment_budget: int
   steps_taken: int
-  corrected_mutations: int
-  total_mutations: int
+  last_tool_output: string
+  tool_history: list
+  corrections_made: list
+  off_target_damage: list
+  available_tools: list
 reward_type:
   type: continuous
   range: [0.0, 1.0]
-  components:
-    - correctness_of_edit
-    - efficiency
-    - off_target_risk
-    - step_penalty
+  step_reward: small exploration signal
+  final_score: task-specific grading
 tasks:
-  easy:
-    description: Single mutation with an obvious best guide.
+  single_target:
+    description: "Single-target knockout: correct one mutation with adequate budget"
+    difficulty: easy
     grader_output: score_0_to_1
-  medium:
-    description: Single mutation with multiple guide tradeoffs.
+  multi_repair:
+    description: "Multi-mutation repair: correct 3 mutations with strategic resource allocation"
+    difficulty: medium
     grader_output: score_0_to_1
-  hard:
-    description: Multiple mutations with noisy observations and harder guide tradeoffs.
+  precision_editing:
+    description: "Precision editing: correct mutations while protecting a regulatory region"
+    difficulty: hard
     grader_output: score_0_to_1

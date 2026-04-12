@@ -4,13 +4,12 @@ build-backend = "setuptools.backends._legacy:_Backend"
 
 [project]
 name = "crispr-editing-env"
-version = "1.0.0"
-description = "OpenEnv environment for CRISPR gene editing optimization"
+version = "2.0.0"
+description = "CRISPR gene editing environment with bioinformatics tool-use for OpenEnv"
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.26.0,<3.0.0",
     "pydantic>=2.7.0,<3.0.0",
-    "matplotlib",
     "fastapi>=0.110.0",
     "uvicorn>=0.29.0",
     "openai>=1.12.0",
