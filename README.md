@@ -65,6 +65,35 @@ No pre-computed guide candidates or utility scores. The agent must discover ever
 - **Medium**: 50% correction + 25% safety + 15% efficiency + 10% grouping bonus
 - **Hard**: 35% correction + 25% safety + 30% regulatory integrity (binary!) + 10% efficiency
 
+### Reward Structure
+
+The reward function has two components:
+
+**Per-step reward** (returned after every tool call):
+
+| Condition | Reward |
+|-----------|--------|
+| Tool failed | `-0.01` |
+| Free info tool (`analyze_sequence`, `search_pam_sites`, `design_guide`) + new info | `+0.02` |
+| Free info tool, no new info | `+0.005` |
+| Paid tool (`evaluate_guide`, `off_target_scan`, `apply_edit`) | `+0.01` |
+| `check_edit_result` | `+0.01` |
+| `submit_solution` | `+0.0` |
+| Step cost (always applied on success) | `-0.005` |
+
+Step rewards are clipped to `[-0.05, 0.1]`. The small per-step signal encourages exploration without dominating the final score.
+
+**Final episode reward** (triggered on `submit_solution`):
+
+The grading components are non-linear:
+- `correction_score = corrected / total` — linear ratio
+- `safety_score = max(0, 1 − damage_count × penalty)` — clipped linear
+- `efficiency = 1 − budget_used / total_budget` — linear ratio
+- `grouping_bonus = min(1, corrected / edits_applied) × 0.5 + 0.5` — ratio with floor (medium only)
+- `zone_score = 0 if any regulatory damage else 1` — binary step function (hard only)
+
+The outer weighted sum is linear but the inputs are not, making the overall reward function non-linear.
+
 ## Baseline Scores (Greedy Agent, 10 seeds)
 
 ```
