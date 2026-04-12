@@ -1,5 +1,6 @@
 spec_version: 1
 name: crispr-editing-env
+type: space
 url: https://joywin2003-crispr-editing-env.hf.space
 runtime: fastapi
 app: server.app:app

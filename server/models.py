@@ -1,9 +1,13 @@
-"""Pydantic models for the CRISPR v2 tool-based environment."""
+"""Pydantic models for the CRISPR v2 tool-based environment.
+
+Extends openenv-core base classes: Action, Observation, State.
+"""
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
+from openenv.core import Action, Observation, State
 from pydantic import BaseModel, Field
 
 
@@ -15,9 +19,9 @@ class MutationInfo(BaseModel):
 
 class PAMSite(BaseModel):
     position: int
-    strand: str  # "+" or "-"
-    pattern: str  # e.g. "NGG"
-    sequence: str  # actual bases at that position
+    strand: str
+    pattern: str
+    sequence: str
 
 
 class GuideDesign(BaseModel):
@@ -34,17 +38,17 @@ class GuideEvaluation(BaseModel):
     guide_id: str
     sequence: str
     gc_content: float
-    gc_quality: str  # "optimal" / "suboptimal" / "poor"
+    gc_quality: str
     homopolymer_max_run: int
     self_complementarity: float
-    overall_quality: str  # "high" / "medium" / "low"
+    overall_quality: str
 
 
 class OffTargetHit(BaseModel):
     position: int
     mismatches: int
     in_regulatory_region: bool
-    risk_level: str  # "high" / "medium" / "low"
+    risk_level: str
 
 
 class CorrectionResult(BaseModel):
@@ -52,37 +56,59 @@ class CorrectionResult(BaseModel):
     corrected: bool
 
 
-class ToolResult(BaseModel):
+class ToolResultRecord(BaseModel):
     tool_name: str
     args: str
     output_summary: str
     step: int
 
 
-class EnvironmentState(BaseModel):
-    task_description: str
-    task_type: str  # "single_target" / "multi_repair" / "precision_editing"
-    target_gene_id: str
-    target_gene_length: int
-    known_mutations: List[MutationInfo]
+# ── OpenEnv Action ───────────────────────────────────────────────────────
+
+class CrisprAction(Action):
+    """Agent's action: a tool command string."""
+    command: str = Field(..., description="Tool command, e.g. 'search_pam_sites NGG'")
+
+
+# ── OpenEnv Observation ──────────────────────────────────────────────────
+
+class CrisprObservation(Observation):
+    """Observation returned after each step."""
+    task_description: str = ""
+    task_type: str = ""
+    target_gene_id: str = ""
+    target_gene_length: int = 0
+    known_mutations: List[MutationInfo] = Field(default_factory=list)
     regulatory_regions: List[Tuple[int, int]] = Field(default_factory=list)
-    experiment_budget: int
-    max_steps: int
+    experiment_budget: int = 0
+    max_steps: int = 0
     steps_taken: int = 0
     edits_applied: int = 0
     last_tool: Optional[str] = None
     last_tool_output: Optional[str] = None
     last_tool_error: Optional[str] = None
-    tool_history: List[ToolResult] = Field(default_factory=list)
+    tool_history: List[ToolResultRecord] = Field(default_factory=list)
     corrections_made: List[CorrectionResult] = Field(default_factory=list)
     off_target_damage: List[OffTargetHit] = Field(default_factory=list)
     available_tools: List[str] = Field(default_factory=lambda: [
-        "analyze_sequence <start> <end> — View GC content, repeats, structure for a region (FREE)",
+        "analyze_sequence <start> <end> — View GC content, repeats, structure (FREE)",
         "search_pam_sites <pattern> — Find PAM motifs like NGG (FREE)",
-        "design_guide <pam_position> <strand> — Design 20nt guide at a PAM site (FREE)",
-        "evaluate_guide <guide_sequence> — Detailed quality scoring (1 credit)",
-        "off_target_scan <guide_sequence> — Check off-target sites (2 credits)",
-        "apply_edit <guide_sequence> <target_position> — Apply edit, irreversible (3 credits)",
-        "check_edit_result — See corrections and damage so far (FREE)",
+        "design_guide <pam_position> <strand> — Design 20nt guide at PAM site (FREE)",
+        "evaluate_guide <guide_sequence> — Quality scoring (1 credit)",
+        "off_target_scan <guide_sequence> — Off-target check (2 credits)",
+        "apply_edit <guide_sequence> <target_position> — Apply edit (3 credits)",
+        "check_edit_result — See corrections and damage (FREE)",
         "submit_solution — End episode, trigger grading (FREE)",
     ])
+
+
+# ── OpenEnv State ────────────────────────────────────────────────────────
+
+class CrisprState(State):
+    """Server-side state for the environment."""
+    task_type: str = ""
+    target_gene_id: str = ""
+    budget_remaining: int = 0
+    edits_applied: int = 0
+    corrections_count: int = 0
+    damage_count: int = 0

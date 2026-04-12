@@ -4,7 +4,10 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:github.com)",
       "Bash(curl:*)",
-      "Bash(python3 -c ':*)"
+      "Bash(python3 -c ':*)",
+      "Bash(python3 -c \"from server.graders import grade_single_target, grade_multi_repair, grade_precision_editing; from server.models import CorrectionResult, MutationInfo, OffTargetHit; print\\('Imports OK'\\)\")",
+      "Bash(python3)",
+      "Bash(python3:*)"
     ]
   }
 }

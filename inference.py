@@ -11,7 +11,8 @@ import traceback
 
 from openai import OpenAI
 
-from server.environment import CrisprEnv
+from server.environment import CrisprEnvironment
+from server.models import CrisprAction
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -125,8 +126,8 @@ def get_llm_action(messages: list) -> str:
 
 def run_task(task_name: str, seed: int = 42) -> float:
     """Run one episode. Returns final score."""
-    env = CrisprEnv(task_level=task_name, seed=seed)
-    obs = env.reset()
+    env = CrisprEnvironment(task_level=task_name, seed=seed)
+    obs = env.reset(seed=seed)
 
     print(f"[START] task={task_name} env={BENCHMARK} model={MODEL_NAME}")
 
@@ -140,35 +141,35 @@ def run_task(task_name: str, seed: int = 42) -> float:
     step_num = 0
     last_error = None
     final_score = 0.0
-    info = {}
 
     try:
         while not done and step_num < MAX_STEPS:
-            action = get_llm_action(messages)
+            action_str = get_llm_action(messages)
             step_num += 1
 
             try:
-                obs, reward, done, info = env.step(action)
-                last_error = None
+                obs = env.step(CrisprAction(command=action_str))
+                reward = obs.reward if obs.reward is not None else 0.0
+                done = obs.done
+                last_error = obs.last_tool_error
             except (ValueError, RuntimeError) as e:
                 last_error = str(e)
                 reward = 0.0
                 done = False
-                obs = env.state()
 
             rewards.append(reward)
             error_str = last_error if last_error else "null"
-            print(f"[STEP] step={step_num} action={action} reward={reward:.2f} done={str(done).lower()} error={error_str}")
+            print(f"[STEP] step={step_num} action={action_str} reward={reward:.2f} done={str(done).lower()} error={error_str}")
 
             if not done:
-                messages.append({"role": "assistant", "content": action})
+                messages.append({"role": "assistant", "content": action_str})
                 feedback = format_observation(obs)
                 if last_error:
                     feedback = f"ERROR: {last_error}\n\n{feedback}"
                 messages.append({"role": "user", "content": feedback})
 
-        if done and "final_score" in info:
-            final_score = info["final_score"]
+        if done and obs.metadata.get("final_score") is not None:
+            final_score = obs.metadata["final_score"]
         else:
             final_score = sum(rewards) / max(len(rewards), 1)
             final_score = max(0.0, min(1.0, final_score))
