@@ -12,7 +12,7 @@ import traceback
 from openai import OpenAI
 
 from server.environment import CrisprEnvironment
-from server.models import CrisprAction
+from models import CrisprAction
 
 # ---------------------------------------------------------------------------
 # Configuration

@@ -7,7 +7,7 @@ from typing import Any, Dict
 from openenv.core import EnvClient
 from openenv.core.client_types import StepResult
 
-from server.models import CrisprAction, CrisprObservation, CrisprState
+from models import CrisprAction, CrisprObservation, CrisprState
 
 
 class CrisprEnvClient(EnvClient[CrisprAction, CrisprObservation, CrisprState]):
