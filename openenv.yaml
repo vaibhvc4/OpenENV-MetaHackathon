@@ -4,7 +4,7 @@ type: space
 url: https://joywin2003-crispr-editing-env.hf.space
 runtime: fastapi
 app: server.app:app
-port: 7860
+port: 8000
 description: >
   CRISPR gene editing environment where an AI agent uses bioinformatics tools
   to analyze DNA sequences, find PAM sites, design guide RNAs, evaluate off-target
